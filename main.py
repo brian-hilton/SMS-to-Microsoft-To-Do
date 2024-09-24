@@ -28,24 +28,33 @@ async def main():
     # Login using device code (code provided in terminal, browser page should open automatically to enter code)
     await login_user(graph)
 
-    # Fetch most recent email: The 0th index is the rng id, each index after that follows the email dictionary structure created below
-    latest_emails = await get_latest_emails(graph)    
-    most_recent_email = latest_emails[1]
-
-    print('Latest email: ', most_recent_email['SMS Body'])
-    print('Sender:', most_recent_email['Sender'])
-    print('Message ID: ', most_recent_email['MessageID'][-12:])
+    # Fetch most recent email: Returns a list of 10 emails; each email is a dictionary with fields described below
+    current_emails = await get_latest_emails(graph) 
+    current_email = current_emails[0]   
+    print('Latest email: ', current_email['SMS_Body'])
+    print('Sender:', current_email['Sender'])
+    print('Message ID: ', current_email['MessageID'][-12:], '\n')
     
+    # while True:
+    #     time.sleep(time_delay)
+
+    #     # is_new_mail is a list consiting of: boolean to determine if theres a new mesage in inbox. If there is, the second element contains the message resource
+    #     is_new_mail = await check_for_new_email(graph, most_recent_email)
+    #     if is_new_mail[0] == True:
+    #         print('We have new mail! Posting to Microsoft To Do.')
+    #         most_recent_email = is_new_mail[1]
+    #         await save_attachments_by_message_id(graph, most_recent_email['MessageID'])
+    #         await post_todo_task_from_email(graph, most_recent_email)   
+    #     else:
+    #         print('No new mail...')
+
     while True:
         time.sleep(time_delay)
 
-        # is_new_mail is a list consiting of: boolean to determine if theres a new mesage in inbox. If there is, the second element contains the message resource
-        is_new_mail = await check_for_new_email(graph, most_recent_email)
+        is_new_mail = await check_for_new_email(graph, current_emails)
         if is_new_mail[0] == True:
-            print('We have new mail! Posting to Microsoft To Do.')
-            most_recent_email = is_new_mail[1]
-            await save_attachments_by_message_id(graph, most_recent_email['MessageID'])
-            await post_todo_task_from_email(graph, most_recent_email)   #TODO Finish necessary functions to upload To Do task with proper title
+            new_emails = await post_service(graph, current_emails)
+            current_emails = new_emails
         else:
             print('No new mail...')
 
@@ -122,7 +131,7 @@ async def post_todo_task_from_email(graph: Graph, email):
 
         task_title = task_title + ', ' + sender_name
         result = await graph.post_task(TASK_LIST_ID, task_title)
-        print(task_title, 'uploaded to', str(TASK_LIST_ID[:10]))
+        print('\t' + task_title + ' uploaded to Microsoft To List ID:', str(TASK_LIST_ID[:10]), '\n')
 
         # If we have image attachments, upload as file attachment
         if filtered_attachments:
@@ -138,13 +147,44 @@ async def post_todo_task_from_email(graph: Graph, email):
 
         await graph.post_task(TASK_LIST_ID, task_title, attachments)
 
+async def post_service(graph: Graph, current_emails):
+    """Handle posting task when we know we have at least one new email. Return the new list of emails"""
+    # First call count_new_emails, then iterate through, saving and posting each time
+    unchecked_emails = await get_latest_emails(graph)
+    new_email_list = await count_new_emails(current_emails, unchecked_emails)
+
+    for email in new_email_list:
+        print('\t' + 'New message: ' + email['SMS_Body'] + '\n' + '\t' + 'From: ' + email['Sender'])
+        await save_attachments_by_message_id(graph, email['MessageID'])
+        await post_todo_task_from_email(graph, email)
+    
+    return unchecked_emails
+
+
+async def count_new_emails(curr_list, new_list):
+    """Identify how many new emails were received since last check, Return list of new emails"""
+    prev_ids = {d['MessageID'] for d in curr_list}
+    new_ids = {d['MessageID'] for d in new_list}
+    ids = list(new_ids - prev_ids)
+
+    # Filter using found ids
+    # for email in new_list:
+    #     print (email['MessageID'][-12:])
+    
+    # print('\n'*2)
+    # for id in ids:
+    #     print(id[-12:])
+
+    new_email_list = [email for email in new_list if email['MessageID'] in ids]
+    print()
+    print('Found', str(len(new_email_list)), 'new emails!') 
+    return new_email_list
+
 async def get_latest_emails(graph: Graph):
-    """Obtain 10 latest emails and store in list. Emails are stored as dictionaries with four values: Subject, sender, message id, and sms body (from downloaded file)"""
+    """Obtain 10 latest emails and store in list. Emails are stored as dictionaries with four values: Subject, sender, message id, and SMS_Body (from downloaded file)"""
 
     # We only want to store the subject, sender and messageID (in that order)
-    # Also store a random id at the beginning of email list in case more than one message is received between ticks
     email_list = []
-    email_list.append(random.random())
 
     message_page = await graph.get_inbox()
     if message_page and message_page.value:
@@ -153,7 +193,7 @@ async def get_latest_emails(graph: Graph):
                 'Subject': 'EMPTY SUBJECT',
                 'Sender': 'EMPTY SENDER FIELD',
                 'MessageID': 'NO messageID found',
-                'SMS Body': 'No SMS body'
+                'SMS_Body': 'No SMS Body'
             }
 
             if message.subject:
@@ -162,7 +202,7 @@ async def get_latest_emails(graph: Graph):
             if (message.from_ and message.from_.email_address):
                 curr_email['Sender'] = message.from_.email_address.name   
 
-            curr_email['SMS Body'] = await graph.get_attachments(message.id, True)     
+            curr_email['SMS_Body'] = await graph.get_attachments(message.id, True)     
 
             # Grab unique part of message id (last 12 characters)
             # curr_email.append(message.id[-12:]) Entire message ID needed for later logic so no longer need to slice
@@ -172,12 +212,13 @@ async def get_latest_emails(graph: Graph):
     
         return email_list
 
-async def check_for_new_email(graph: Graph, most_recent_email):
+async def check_for_new_email(graph: Graph, current_emails):
+    current_email = current_emails[0]
     latest_emails = await get_latest_emails(graph)
-    latest_email = latest_emails[1]
+    latest_email = latest_emails[0]
 
     # Compare email id
-    if latest_email['MessageID'] == most_recent_email['MessageID']:
+    if latest_email['MessageID'] == current_email['MessageID']:
         return [False]
     else:
         return [True, latest_email]
@@ -199,7 +240,7 @@ async def save_attachments_by_message_id(graph: Graph, message_id: str):
 
                     with open(file_path, 'wb') as f:
                         f.write(file_content)
-                    print(f'Saved {attachment_name} to {file_path}')
+                    print(f'\t Saved {attachment_name} to {file_path}')
 
 async def create_attachment_folder():
     months = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december']
