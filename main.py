@@ -34,19 +34,6 @@ async def main():
     print('Latest email: ', current_email['SMS_Body'])
     print('Sender:', current_email['Sender'])
     print('Message ID: ', current_email['MessageID'][-12:], '\n')
-    
-    # while True:
-    #     time.sleep(time_delay)
-
-    #     # is_new_mail is a list consiting of: boolean to determine if theres a new mesage in inbox. If there is, the second element contains the message resource
-    #     is_new_mail = await check_for_new_email(graph, most_recent_email)
-    #     if is_new_mail[0] == True:
-    #         print('We have new mail! Posting to Microsoft To Do.')
-    #         most_recent_email = is_new_mail[1]
-    #         await save_attachments_by_message_id(graph, most_recent_email['MessageID'])
-    #         await post_todo_task_from_email(graph, most_recent_email)   
-    #     else:
-    #         print('No new mail...')
 
     while True:
         time.sleep(time_delay)
@@ -155,7 +142,7 @@ async def post_service(graph: Graph, current_emails):
 
     for email in new_email_list:
         print('\t' + 'New message: ' + email['SMS_Body'] + '\n' + '\t' + 'From: ' + email['Sender'])
-        await save_attachments_by_message_id(graph, email['MessageID'])
+        await save_attachments_by_message_id(graph, email['MessageID'], email['SMS_Body'])
         await post_todo_task_from_email(graph, email)
     
     return unchecked_emails
@@ -223,24 +210,35 @@ async def check_for_new_email(graph: Graph, current_emails):
     else:
         return [True, latest_email]
 
-# TODO Fix file overwrite issue; add naming convention using sender and/or date&time
-async def save_attachments_by_message_id(graph: Graph, message_id: str):
+async def save_attachments_by_message_id(graph: Graph, message_id: str, SMS_Body: str):
         """Save attachments locally to the correct subfolder within attachments. Does not return anything or upload any attachments, this is done elsewhere"""
         attachment_dir = await create_attachment_folder()
         attachments = await graph.get_attachments(message_id)
+        file_type_count = {'jpg': 0,
+                           'gif': 0,
+                           'png': 0,
+                           'bmp': 0,
+                           'txt': 0
+                           }
+
         if attachments:
             for attachment in attachments:
-                
-                attachment_name = attachment.name
+                name = attachment.name
+                extension = name[-3:]
+                file_count = file_type_count[extension]
+                file_name = SMS_Body + '_' + message_id[-8:-4] + '_' + str(file_count) + '.' + extension        # Concatenate the SMS_Body with the unique part of the message id and a #count in case there are multiple files of the same type in one message.
+                file_type_count[extension] += 1
+
                 attachment_content = attachment.content_bytes
                 
                 if attachment_content:
                     file_content = base64.b64decode(attachment_content)
-                    file_path = os.path.join(attachment_dir, attachment_name)
+                    file_path = os.path.join(attachment_dir, file_name)
 
                     with open(file_path, 'wb') as f:
                         f.write(file_content)
-                    print(f'\t Saved {attachment_name} to {file_path}')
+                    print(f'\tSaved to {file_path}')
+                    print('\t' + message_id[-12:])
 
 async def create_attachment_folder():
     months = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december']
