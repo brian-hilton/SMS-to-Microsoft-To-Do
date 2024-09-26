@@ -20,7 +20,7 @@ async def main():
     config = configparser.ConfigParser()
     config.read(['config/config.cfg', 'config/config.dev.cfg'])
     azure_settings = config['azure']
-    time_delay = 10      # May adjust as necessary, time is in seconds
+    time_delay = 90      # May adjust as necessary, time is in seconds
 
     # create graph instance
     graph: Graph = Graph(azure_settings)
@@ -44,7 +44,7 @@ async def main():
             new_emails = await post_service(graph, current_emails)
             current_emails = new_emails
         else:
-            print('No new mail...')
+            print(f'No new mail... {time.asctime(time.localtime())}')
 
 async def login_user(graph: Graph):
     """Uses device code authorization to login"""
@@ -122,12 +122,13 @@ async def post_todo_task_from_email(graph: Graph, email):
 
         task_title = task_title + ', ' + sender_name
         result = await graph.post_task(TASK_LIST_ID, task_title)
-        print('\t' + task_title + ' uploaded to Microsoft To List ID:', str(TASK_LIST_ID[:10]), '\n')
+        print('\t' + task_title + ' uploaded to Microsoft To List ID:', str(TASK_LIST_ID[:10]))
+        print(f'\tUploaded on {time.asctime(time.localtime())}', '\n')
 
         # If we have image attachments, upload as file attachment
         if filtered_attachments:
             await graph.post_attachments(TASK_LIST_ID, result.id, filtered_attachments)
-            print("Image uploading. Request may take a minute to process.")
+            print("\tImage uploading. Request may take a minute to process.", '\n')
         
     
     else:
@@ -229,7 +230,7 @@ async def save_attachments_by_message_id(graph: Graph, message_id: str, SMS_Body
                 name = attachment.name
                 extension = name[-3:]
                 file_count = file_type_count[extension]
-                file_name = SMS_Body + '_' + message_id[-8:-4] + '_' + str(file_count) + '.' + extension        # Concatenate the SMS_Body with the unique part of the message id and a #count in case there are multiple files of the same type in one message.
+                file_name = SMS_Body[:9] + '_' + message_id[-8:-4] + '_' + str(file_count) + '.' + extension        # Concatenate the SMS_Body with the unique part of the message id and a #count in case there are multiple files of the same type in one message.
                 file_type_count[extension] += 1
 
                 attachment_content = attachment.content_bytes
