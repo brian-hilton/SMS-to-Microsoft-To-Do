@@ -8,6 +8,7 @@ import random
 from msgraph.generated.models.o_data_errors.o_data_error import ODataError
 from graph import Graph
 from config.settings import TASK_LIST_ID
+from config.settings import SMS_CONTACTS
 
 # TODO Implement white list using env file
 # TODO Configure env to grab from local csv
@@ -19,7 +20,7 @@ async def main():
     config = configparser.ConfigParser()
     config.read(['config/config.cfg', 'config/config.dev.cfg'])
     azure_settings = config['azure']
-    time_delay = 5      # May adjust as necessary, time is in seconds
+    time_delay = 10      # May adjust as necessary, time is in seconds
 
     # create graph instance
     graph: Graph = Graph(azure_settings)
@@ -116,6 +117,9 @@ async def post_todo_task_from_email(graph: Graph, email):
             else:
                 filtered_attachments.append(attachment)
 
+        if not task_title:
+            task_title = 'image'
+
         task_title = task_title + ', ' + sender_name
         result = await graph.post_task(TASK_LIST_ID, task_title)
         print('\t' + task_title + ' uploaded to Microsoft To List ID:', str(TASK_LIST_ID[:10]), '\n')
@@ -154,14 +158,6 @@ async def count_new_emails(curr_list, new_list):
     new_ids = {d['MessageID'] for d in new_list}
     ids = list(new_ids - prev_ids)
 
-    # Filter using found ids
-    # for email in new_list:
-    #     print (email['MessageID'][-12:])
-    
-    # print('\n'*2)
-    # for id in ids:
-    #     print(id[-12:])
-
     new_email_list = [email for email in new_list if email['MessageID'] in ids]
     print()
     print('Found', str(len(new_email_list)), 'new emails!') 
@@ -187,9 +183,16 @@ async def get_latest_emails(graph: Graph):
                 curr_email['Subject'] = message.subject
             
             if (message.from_ and message.from_.email_address):
-                curr_email['Sender'] = message.from_.email_address.name   
+                sender = message.from_.email_address.name
+                if sender[:10] in SMS_CONTACTS:
+                    curr_email['Sender'] = SMS_CONTACTS[sender[:10]]
+                else:
+                    curr_email['Sender'] = message.from_.email_address.name
+                               
 
-            curr_email['SMS_Body'] = await graph.get_attachments(message.id, True)     
+            curr_email['SMS_Body'] = await graph.get_attachments(message.id, True) 
+            if type(curr_email['SMS_Body']) != str:
+                curr_email['SMS_Body'] = 'Image'
 
             # Grab unique part of message id (last 12 characters)
             # curr_email.append(message.id[-12:]) Entire message ID needed for later logic so no longer need to slice

@@ -1,3 +1,4 @@
 .env
 /attachments/*
 !/attachments/.gitignore
+config/contacts.csv
