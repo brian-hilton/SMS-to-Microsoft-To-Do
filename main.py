@@ -4,23 +4,22 @@ import base64
 import webbrowser
 import asyncio
 import configparser
-import random
+import httpx
 from msgraph.generated.models.o_data_errors.o_data_error import ODataError
 from graph import Graph
 from config.settings import TASK_LIST_ID
 from config.settings import SMS_CONTACTS
+UNKNOWN_SENDER = 'UNKNOWN'
 
 # TODO Implement white list using env file
-# TODO Configure env to grab from local csv
 # TODO Create status schedule to send an email confirming the app is running
 
 async def main():
-
     # Load settings
     config = configparser.ConfigParser()
     config.read(['config/config.cfg', 'config/config.dev.cfg'])
     azure_settings = config['azure']
-    time_delay = 90      # May adjust as necessary, time is in seconds
+    time_delay = 10      # May adjust as necessary, time is in seconds
 
     # create graph instance
     graph: Graph = Graph(azure_settings)
@@ -37,14 +36,25 @@ async def main():
     print('Message ID: ', current_email['MessageID'][-12:], '\n')
 
     while True:
-        time.sleep(time_delay)
+        try:
+            time.sleep(time_delay)
 
-        is_new_mail = await check_for_new_email(graph, current_emails)
-        if is_new_mail[0] == True:
-            new_emails = await post_service(graph, current_emails)
-            current_emails = new_emails
-        else:
-            print(f'No new mail... {time.asctime(time.localtime())}')
+            is_new_mail = await check_for_new_email(graph, current_emails)
+            if is_new_mail[0] == True:
+                new_emails = await post_service(graph, current_emails)
+                current_emails = new_emails
+            else:
+                print(f'No new mail... {time.asctime(time.localtime())}')
+                
+        except httpx.HTTPStatusError as exc:
+            print(f'Reached an HTTP error: {exc}')
+
+        except asyncio.TimeoutError as timeout:
+            print(f'Async request timed out {timeout}')
+        
+        except Exception as exc:
+            print(f'An unexpected error occured: {exc}')
+            
 
 async def login_user(graph: Graph):
     """Uses device code authorization to login"""
@@ -96,8 +106,7 @@ async def get_todo_lists(graph: Graph):
 
 async def post_todo_task_from_email(graph: Graph, email):
     """Pass in latest email"""
-    #TODO We are getting the plain text attachment, now we need to handle images and upload as a To Do taskFileAttachment
-    #TODO fileAttachments handled in separate function as the task id is required for the upload
+
     task_title = ''
     email_subject = email['Subject']
     sender_name = email['Sender']
@@ -159,8 +168,24 @@ async def count_new_emails(curr_list, new_list):
     new_ids = {d['MessageID'] for d in new_list}
     ids = list(new_ids - prev_ids)
 
-    new_email_list = [email for email in new_list if email['MessageID'] in ids]
+    unauthorized_message_count = 0
+
+    for email in new_list:
+        if email['Sender'] == UNKNOWN_SENDER:
+            print(email['Sender'])
+            unauthorized_message_count += 1
+
+
+    new_email_list = [email for email in new_list if email['MessageID'] in ids and email['Sender'] != UNKNOWN_SENDER]
     print()
+    
+    if len(new_email_list) == 0:
+        print('Unauthorized sender. Message will not be uploaded.', '\n')
+        return new_email_list
+
+    if unauthorized_message_count > 0:
+        print('Detected', str(unauthorized_message_count), 'unauthorized messages. Deploying counter-virus.')
+
     print('Found', str(len(new_email_list)), 'new emails!') 
     return new_email_list
 
@@ -175,7 +200,7 @@ async def get_latest_emails(graph: Graph):
         for message in message_page.value:
             curr_email = {
                 'Subject': 'EMPTY SUBJECT',
-                'Sender': 'EMPTY SENDER FIELD',
+                'Sender': message.from_.email_address.name,
                 'MessageID': 'NO messageID found',
                 'SMS_Body': 'No SMS Body'
             }
@@ -188,7 +213,7 @@ async def get_latest_emails(graph: Graph):
                 if sender[:10] in SMS_CONTACTS:
                     curr_email['Sender'] = SMS_CONTACTS[sender[:10]]
                 else:
-                    curr_email['Sender'] = message.from_.email_address.name
+                    curr_email['Sender'] = UNKNOWN_SENDER
                                
 
             curr_email['SMS_Body'] = await graph.get_attachments(message.id, True) 

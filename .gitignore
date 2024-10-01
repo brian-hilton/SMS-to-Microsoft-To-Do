@@ -2,3 +2,6 @@
 /attachments/*
 !/attachments/.gitignore
 config/contacts.csv
+venv/
+__pycache__/
+*.pyc

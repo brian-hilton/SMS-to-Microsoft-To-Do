@@ -4,7 +4,7 @@ from config.settings import TASK_LIST_ID
 import json
 import base64
 import io
-from azure.identity import DeviceCodeCredential
+from azure.identity import DeviceCodeCredential, TokenCachePersistenceOptions
 from msgraph import GraphServiceClient
 from msgraph.generated.users.item.user_item_request_builder import UserItemRequestBuilder
 from msgraph.generated.users.item.mail_folders.item.messages.messages_request_builder import (
@@ -30,10 +30,12 @@ class Graph:
         client_id = self.settings['clientId']
         tenant_id = self.settings['tenantId']
         graph_scopes = self.settings['graphUserScopes'].split(' ')
+        token_cache_options = TokenCachePersistenceOptions(allow_unencrypted_storage=True)
 
-        self.device_code_credential = DeviceCodeCredential(client_id, tenant_id = tenant_id)
+
+        self.device_code_credential = DeviceCodeCredential(client_id, tenant_id=tenant_id, cache_persistence=token_cache_options)
         self.user_client = GraphServiceClient(self.device_code_credential, graph_scopes)
-
+        
 
 
     async def get_user_token(self):
