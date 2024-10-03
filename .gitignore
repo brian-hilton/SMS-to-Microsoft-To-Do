@@ -5,3 +5,5 @@ config/contacts.csv
 venv/
 __pycache__/
 *.pyc
+test.py
+text_test.py
