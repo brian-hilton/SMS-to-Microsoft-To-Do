@@ -19,7 +19,7 @@ async def main():
     config = configparser.ConfigParser()
     config.read(['config/config.cfg', 'config/config.dev.cfg'])
     azure_settings = config['azure']
-    time_delay = 90      # May adjust as necessary, time is in seconds
+    time_delay = 10      # May adjust as necessary, time is in seconds
 
     # create graph instance
     graph: Graph = Graph(azure_settings)

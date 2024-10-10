@@ -7,3 +7,4 @@ __pycache__/
 *.pyc
 test.py
 text_test.py
+contact_test.py
