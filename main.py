@@ -1,6 +1,7 @@
 import time
 import json
 import os
+import signal
 import httpx
 import asyncio
 from graph import GraphClient
@@ -12,6 +13,13 @@ UNKNOWN_SENDER = 'UNKNOWN'
 
 # TODO Implement white list using env file
 # TODO Create status schedule to send an email confirming the app is running
+
+def handle_sigterm(*args):
+    print("Shutting down gracefully...")
+    exit(0)
+
+
+signal.signal(signal.SIGTERM, handle_sigterm)
 
 async def main():
 
@@ -40,6 +48,7 @@ async def main():
         
         except Exception as exc:
             print(f'An unexpected error occured: {exc}')
+            
         time.sleep(time_delay)
 
 async def check_for_new_messages(graph):
