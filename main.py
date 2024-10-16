@@ -21,8 +21,11 @@ async def main():
     print('Initiating To Do Service')
     await graph.get_user_messages()
 
-    curr_message = graph.get_curr_messages()
-    print(f'{curr_message['SMS_Body']} from {curr_message['Sender']}')
+    curr_messages = graph.get_curr_messages()
+    curr_message = curr_messages[0]
+    sender = curr_message['Sender']
+    message = curr_message['SMS_Body']
+    print(f'{message}, from {sender}')
 
     while True:
         
