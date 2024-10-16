@@ -19,7 +19,10 @@ async def main():
     graph: GraphClient = GraphClient(CLIENT_ID, CLIENT_SECRET, TENANT_ID)
     time_delay = 90
     print('Initiating To Do Service')
-    await graph.get_user_messages()  
+    await graph.get_user_messages()
+
+    curr_message = graph.get_curr_messages()
+    print(f'{curr_message['SMS_Body']} from {curr_message['Sender']}')
 
     while True:
         
