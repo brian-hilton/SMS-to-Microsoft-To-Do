@@ -4,6 +4,8 @@ import os
 import signal
 import httpx
 import asyncio
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import threading
 from graph import GraphClient
 from config.settings import CLIENT_ID
 from config.settings import CLIENT_SECRET
@@ -18,8 +20,18 @@ def handle_sigterm(*args):
     print("Shutting down gracefully...")
     exit(0)
 
-
 signal.signal(signal.SIGTERM, handle_sigterm)
+
+def start_health_check_server():
+    class HealthCheckHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-type", "text/plain")
+            self.end_headers()
+            self.wfile.write(b"OK")
+
+    server = HTTPServer(('0.0.0.0', 5000), HealthCheckHandler)
+    server.serve_forever()
 
 async def main():
 
@@ -48,7 +60,7 @@ async def main():
         
         except Exception as exc:
             print(f'An unexpected error occured: {exc}')
-            
+
         time.sleep(time_delay)
 
 async def check_for_new_messages(graph):
@@ -92,4 +104,10 @@ async def print_messages(graph):
         print(message['SMS_Body'], 'From:', message['Sender'])
     
 # Run main
-asyncio.run(main())
+if __name__ == "__main__":
+    # Start the health check server in a separate thread
+    health_check_thread = threading.Thread(target=start_health_check_server)
+    health_check_thread.start()
+
+    # Run the async loop
+    asyncio.run(main())
