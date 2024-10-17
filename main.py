@@ -13,9 +13,6 @@ from config.settings import TENANT_ID
 
 UNKNOWN_SENDER = 'UNKNOWN'
 
-# TODO Implement white list using env file
-# TODO Create status schedule to send an email confirming the app is running
-
 def handle_sigterm(*args):
     print("Shutting down gracefully...")
     exit(0)

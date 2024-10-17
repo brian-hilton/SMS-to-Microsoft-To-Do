@@ -27,16 +27,17 @@ class GraphClient:
         return self.messages
     
     def get_access_token(self):
-        if self.access_token:
-            return self.access_token
-        
-        result = self.app.acquire_token_for_client(scopes=self.scope)
-
-        if "access_token" in result:
-            self.access_token = result["access_token"]
-            return self.access_token
-        else:
-            raise Exception("Failed to obtain access token: " + str(result.get("error")))
+        try:
+            result = self.app.acquire_token_for_client(scopes=self.scope)
+            if "access_token" in result:
+                return result["access_token"]
+            else:
+                print("Failed to acquire access token:", result.get("error"), result.get("error_description"))
+                return None
+            
+        except Exception as e:
+            print(f"Error acquiring token: {e}")
+            return None        
     
     async def get_users(self):
         access_token = self.get_access_token()
@@ -75,7 +76,7 @@ class GraphClient:
                 if attachments:
                     for attachment in attachments:
                         if attachment.get('contentType') == 'text/plain':
-                            sms_content = await self.download_attachment(raw_message['id'], attachment['id'], headers)
+                            sms_content = await self.download_attachment(raw_message['id'], attachment['id'])
                         if attachment.get('contentType', '').startswith('image/'):
                             image_attachment_array.append([attachment['id'], attachment.get('contentType')])
 
@@ -106,9 +107,14 @@ class GraphClient:
             print(f'Error: {response.status_code} - {response.text}')
             return []
     
-    async def download_attachment(self, message_id, attachment_id, headers):
+    async def download_attachment(self, message_id, attachment_id):
         """Download text file attachment and return decoded text to use as To Do Task title"""
         attachment_url = f"https://graph.microsoft.com/v1.0/users/{USER_ID}/messages/{message_id}/attachments/{attachment_id}/$value"
+        access_token = self.get_access_token()
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json'
+        }
         response = requests.get(attachment_url, headers=headers)
         decoded_message = 'sms body'
 
@@ -192,16 +198,20 @@ class GraphClient:
             print('Task created successfully!')
             task_id = response.json().get("id")  # Save the task ID for attaching files later
             if len(message['AttachmentArray']) > 0:
-                await self.upload_image(message, task_id, headers)
+                await self.upload_image(message, task_id)
         
         else:
             print(f"Failed to create task. Status code: {response.status_code}")
             print(response.json())
             return 'Failed to upload task'
 
-    async def upload_image(self, message, task_id, headers):
+    async def upload_image(self, message, task_id):
         """ Use attachment id to get image and post to a created to do task """
-
+        access_token = self.get_access_token()
+        headers = {
+            'Authorization': f'Bearer {access_token}',
+            'Content-Type': 'application/json'
+        }
         to_do_attachment_url = f"https://graph.microsoft.com/v1.0/users/{USER_ID}/todo/lists/{TASK_LIST_ID}/tasks/{task_id}/attachments"
         
         attachment_collection = await self.download_images(message)
